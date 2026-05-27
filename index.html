@@ -1,0 +1,593 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>英文阅读助手 - 沉浸式生词记录</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    animation: {
+                        'pulse-fast': 'pulse 1s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Merriweather:ital,wght@0,300;0,400;0,700;1,400&display=swap');
+
+        body {
+            font-family: 'Inter', sans-serif;
+            transition: background-color 0.3s, color 0.3s;
+        }
+
+        .reading-text {
+            font-family: 'Merriweather', serif;
+            line-height: 1.8;
+            font-size: 1.125rem;
+            word-spacing: 0.1em;
+        }
+
+        /* 单词的样式 */
+        .word {
+            display: inline-block;
+            padding: 0 2px;
+            margin: 0 1px;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        /* 浅色模式 - 悬停和选中 */
+        .word:hover { background-color: #e2e8f0; transform: translateY(-1px); }
+        .word.selected { background-color: #fef08a; color: #854d0e; font-weight: 500; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
+        
+        /* 暗色模式 - 悬停和选中 */
+        .dark .word:hover { background-color: #334155; }
+        .dark .word.selected { background-color: #713f12; color: #fef08a; font-weight: 500; box-shadow: 0 1px 2px rgba(0,0,0,0.2); }
+
+        .punctuation { display: inline; }
+
+        /* 自定义滚动条 - 浅色 */
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: #f1f5f9; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+
+        /* 自定义滚动条 - 暗色 */
+        .dark ::-webkit-scrollbar-track { background: #1e293b; }
+        .dark ::-webkit-scrollbar-thumb { background: #475569; }
+        .dark ::-webkit-scrollbar-thumb:hover { background: #64748b; }
+
+        /* 加载动画 */
+        .loader {
+            border: 2px solid #f3f3f3;
+            border-top: 2px solid #3b82f6;
+            border-radius: 50%;
+            width: 14px;
+            height: 14px;
+            animation: spin 1s linear infinite;
+            display: inline-block;
+            vertical-align: middle;
+        }
+        .dark .loader { border: 2px solid #334155; border-top: 2px solid #60a5fa; }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col items-center py-10 px-4 md:px-8 bg-slate-50 text-slate-700 dark:bg-slate-900 dark:text-slate-200">
+
+    <header class="w-full max-w-6xl mb-8 flex justify-between items-start">
+        <div class="text-left">
+            <h1 class="text-3xl font-bold text-slate-800 dark:text-white mb-2 flex items-center gap-3">
+                📚 沉浸式英文阅读助手
+            </h1>
+            <p class="text-slate-500 dark:text-slate-400">粘贴文章 -> 点击生词高亮 -> 自动翻译、发音并记录</p>
+        </div>
+        
+        <!-- 暗色模式切换按钮 -->
+        <button id="themeToggleBtn" class="p-2 rounded-full bg-white dark:bg-slate-800 shadow-sm border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700 transition" title="切换深色/浅色模式">
+            <svg id="sunIcon" class="w-6 h-6 text-amber-500 hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"></path></svg>
+            <svg id="moonIcon" class="w-6 h-6 text-slate-600 dark:text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"></path></svg>
+        </button>
+    </header>
+
+    <main class="w-full max-w-6xl flex flex-col lg:flex-row gap-6">
+        
+        <!-- 左侧：输入与阅读区域 -->
+        <div class="flex-1 flex flex-col gap-6">
+            <!-- 输入区 -->
+            <div id="inputSection" class="bg-white dark:bg-slate-800 p-6 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700 flex flex-col h-[350px]">
+                <h2 class="text-lg font-semibold mb-3 flex items-center justify-between text-slate-800 dark:text-slate-100">
+                    <span>1. 粘贴英文内容</span>
+                    <button id="demoBtn" class="text-sm font-normal text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 px-2 py-1 bg-blue-50 dark:bg-slate-700 rounded transition">加载示例文章</button>
+                </h2>
+                <textarea id="textInput" class="flex-1 w-full p-4 bg-transparent border border-slate-200 dark:border-slate-600 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none resize-none transition text-slate-700 dark:text-slate-200" placeholder="在此粘贴你需要阅读的英文段落..."></textarea>
+                <div class="mt-4 flex justify-between items-center">
+                    <span id="restoreTip" class="text-sm text-green-600 dark:text-green-400 hidden flex-items-center gap-1">
+                        <svg class="w-4 h-4 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
+                        已恢复上次阅读进度
+                    </span>
+                    <button id="startReadingBtn" class="ml-auto bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-6 rounded-xl shadow-sm transition hover:shadow flex items-center gap-2">
+                        开始阅读
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                            <path fill-rule="evenodd" d="M10.293 3.293a1 1 0 011.414 0l6 6a1 1 0 010 1.414l-6 6a1 1 0 01-1.414-1.414L14.586 11H3a1 1 0 110-2h11.586l-4.293-4.293a1 1 0 010-1.414z" clip-rule="evenodd" />
+                        </svg>
+                    </button>
+                </div>
+            </div>
+
+            <!-- 阅读区 (初始隐藏) -->
+            <div id="readingSection" class="bg-white dark:bg-slate-800 p-6 md:p-8 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700 hidden flex-col min-h-[500px]">
+                <div class="flex items-center justify-between mb-6 border-b border-slate-100 dark:border-slate-700 pb-4">
+                    <h2 class="text-lg font-semibold flex items-center gap-2 text-slate-800 dark:text-slate-100">
+                        <span>2. 沉浸阅读</span>
+                        <span class="text-sm font-normal text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-700 px-2 py-0.5 rounded-full">点击单词即可标注</span>
+                    </h2>
+                    <button id="backToInputBtn" class="text-sm text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 transition flex items-center gap-1">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                            <path fill-rule="evenodd" d="M9.707 16.707a1 1 0 01-1.414 0l-6-6a1 1 0 010-1.414l6-6a1 1 0 011.414 1.414L5.414 9H17a1 1 0 110 2H5.414l4.293 4.293a1 1 0 010 1.414z" clip-rule="evenodd" />
+                        </svg>
+                        返回修改
+                    </button>
+                </div>
+                <!-- 渲染单词的容器 -->
+                <div id="readerContainer" class="reading-text flex-1 overflow-y-auto pr-2 text-slate-800 dark:text-slate-300">
+                    <!-- 单词将由 JS 生成在这里 -->
+                </div>
+            </div>
+        </div>
+
+        <!-- 右侧：生词本区域 -->
+        <div class="w-full lg:w-[400px] flex flex-col gap-4">
+            <div class="bg-white dark:bg-slate-800 p-6 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700 flex flex-col h-[80vh] sticky top-6">
+                <div class="flex items-center justify-between mb-4 pb-2 border-b border-slate-100 dark:border-slate-700">
+                    <h2 class="text-lg font-semibold flex items-center gap-2 text-slate-800 dark:text-slate-100">
+                        <span>🔖 生词记录</span>
+                        <span id="wordCount" class="text-xs font-bold text-white bg-blue-500 px-2 py-0.5 rounded-full">0</span>
+                    </h2>
+                    <div class="flex gap-2">
+                        <button id="copyAllBtn" class="text-sm text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 disabled:text-slate-400 dark:disabled:text-slate-600 disabled:cursor-not-allowed transition" title="复制文本" disabled>
+                            复制
+                        </button>
+                        <span class="text-slate-300 dark:text-slate-600">|</span>
+                        <button id="exportCsvBtn" class="text-sm text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 disabled:text-slate-400 dark:disabled:text-slate-600 disabled:cursor-not-allowed transition" title="导出CSV供Anki使用" disabled>
+                            导出 CSV
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 生词列表容器 -->
+                <div id="vocabularyList" class="flex-1 overflow-y-auto pr-2 flex flex-col gap-3">
+                    <!-- 空状态 -->
+                    <div id="emptyState" class="h-full flex flex-col items-center justify-center text-slate-400 dark:text-slate-500 opacity-70">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+                        </svg>
+                        <p class="text-sm">在左侧阅读区点击单词</p>
+                        <p class="text-sm">即可在此处记录并翻译</p>
+                    </div>
+                    <!-- 生词项将由 JS 生成在这里 -->
+                </div>
+
+                <!-- 底部操作区 -->
+                <div class="mt-4 pt-4 border-t border-slate-100 dark:border-slate-700 flex justify-between items-center">
+                    <button id="clearAllBtn" class="text-sm text-red-500 hover:text-red-600 disabled:text-slate-300 dark:disabled:text-slate-600 transition" disabled>
+                        清空记录
+                    </button>
+                    <span id="copyToast" class="text-sm text-green-600 dark:text-green-400 opacity-0 transition-opacity duration-300">已处理成功!</span>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        // --- 状态管理 ---
+        const state = {
+            rawText: '',
+            words: [],
+            vocabulary: new Map() // key: cleanWord, value: { original, cleanWord, info }
+        };
+
+        // --- DOM 元素 ---
+        const els = {
+            inputSection: document.getElementById('inputSection'),
+            textInput: document.getElementById('textInput'),
+            demoBtn: document.getElementById('demoBtn'),
+            startReadingBtn: document.getElementById('startReadingBtn'),
+            restoreTip: document.getElementById('restoreTip'),
+            
+            readingSection: document.getElementById('readingSection'),
+            readerContainer: document.getElementById('readerContainer'),
+            backToInputBtn: document.getElementById('backToInputBtn'),
+            
+            vocabularyList: document.getElementById('vocabularyList'),
+            emptyState: document.getElementById('emptyState'),
+            wordCount: document.getElementById('wordCount'),
+            copyAllBtn: document.getElementById('copyAllBtn'),
+            exportCsvBtn: document.getElementById('exportCsvBtn'),
+            clearAllBtn: document.getElementById('clearAllBtn'),
+            copyToast: document.getElementById('copyToast'),
+
+            themeToggleBtn: document.getElementById('themeToggleBtn'),
+            sunIcon: document.getElementById('sunIcon'),
+            moonIcon: document.getElementById('moonIcon')
+        };
+
+        const demoText = `The James Webb Space Telescope is the largest, most powerful infrared space telescope ever built. It will allow scientists to see what our universe looked like about 200 million years after the Big Bang. The telescope will be able to capture images of some of the first galaxies ever formed.`;
+
+        // --- 初始化与本地存储 (LocalStorage) ---
+        function initApp() {
+            initTheme();
+            initEvents();
+            loadStateFromStorage();
+        }
+
+        function initTheme() {
+            const savedTheme = localStorage.getItem('er_theme');
+            if (savedTheme === 'dark' || (!savedTheme && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+                document.documentElement.classList.add('dark');
+                els.sunIcon.classList.remove('hidden');
+                els.moonIcon.classList.add('hidden');
+            }
+        }
+
+        function loadStateFromStorage() {
+            try {
+                const savedVocab = localStorage.getItem('er_vocab');
+                if (savedVocab) {
+                    const parsed = JSON.parse(savedVocab);
+                    state.vocabulary = new Map(parsed);
+                    
+                    // 重新渲染已保存的生词
+                    state.vocabulary.forEach((data, cleanWord) => {
+                        addLoadingVocabularyItem(cleanWord, data.original);
+                        updateVocabularyItem(cleanWord, data.info);
+                    });
+                    updateVocabularyUIState();
+                }
+
+                const savedText = localStorage.getItem('er_text');
+                if (savedText) {
+                    els.textInput.value = savedText;
+                    els.restoreTip.classList.remove('hidden');
+                }
+            } catch (e) {
+                console.error("Failed to load local storage", e);
+            }
+        }
+
+        function saveStateToStorage() {
+            localStorage.setItem('er_text', state.rawText);
+            const vocabArray = Array.from(state.vocabulary.entries());
+            localStorage.setItem('er_vocab', JSON.stringify(vocabArray));
+        }
+
+        function initEvents() {
+            els.demoBtn.addEventListener('click', () => els.textInput.value = demoText);
+            
+            els.startReadingBtn.addEventListener('click', () => {
+                const text = els.textInput.value.trim();
+                if (!text) { showToast('请先输入英文内容', true); return; }
+                startReading(text);
+            });
+
+            els.backToInputBtn.addEventListener('click', () => {
+                els.readingSection.classList.add('hidden');
+                els.inputSection.classList.remove('hidden');
+            });
+
+            els.copyAllBtn.addEventListener('click', copyVocabulary);
+            els.exportCsvBtn.addEventListener('click', exportCSV);
+            els.clearAllBtn.addEventListener('click', clearVocabulary);
+
+            els.themeToggleBtn.addEventListener('click', () => {
+                const isDark = document.documentElement.classList.toggle('dark');
+                localStorage.setItem('er_theme', isDark ? 'dark' : 'light');
+                els.sunIcon.classList.toggle('hidden', !isDark);
+                els.moonIcon.classList.toggle('hidden', isDark);
+            });
+        }
+
+        // --- 核心：阅读器逻辑 ---
+        function startReading(text) {
+            state.rawText = text;
+            state.words = parseText(text);
+            saveStateToStorage(); // 保存当前文本
+            
+            renderReadingArea();
+            
+            els.inputSection.classList.add('hidden');
+            els.readingSection.classList.remove('hidden');
+            els.readingSection.classList.add('flex');
+        }
+
+        function parseText(text) {
+            const regex = /([a-zA-Z0-9]+(?:-[a-zA-Z0-9]+)*)|([^a-zA-Z0-9\s]+)|(\s+)/g;
+            let match; const parsed = []; let idCounter = 0;
+            while ((match = regex.exec(text)) !== null) {
+                if (match[1]) parsed.push({ id: `word-${idCounter++}`, text: match[1], isWord: true, cleanWord: match[1].toLowerCase().replace(/[^a-z0-9]/gi, '') });
+                else if (match[2]) parsed.push({ id: `punct-${idCounter++}`, text: match[2], isWord: false });
+                else if (match[3]) parsed.push({ id: `space-${idCounter++}`, text: match[3], isWord: false, isSpace: true });
+            }
+            return parsed;
+        }
+
+        function renderReadingArea() {
+            els.readerContainer.innerHTML = '';
+            const fragment = document.createDocumentFragment();
+
+            state.words.forEach(item => {
+                if (item.isSpace) {
+                    if (item.text.includes('\n')) {
+                         const brLines = item.text.split('\n').length - 1;
+                         for(let i=0; i<brLines; i++) fragment.appendChild(document.createElement('br'));
+                    } else {
+                        const span = document.createElement('span'); span.textContent = item.text; fragment.appendChild(span);
+                    }
+                } else if (item.isWord) {
+                    const span = document.createElement('span');
+                    span.id = item.id;
+                    span.className = 'word';
+                    span.textContent = item.text;
+                    
+                    if (state.vocabulary.has(item.cleanWord)) span.classList.add('selected');
+
+                    span.addEventListener('click', () => toggleWordSelection(item, span));
+                    fragment.appendChild(span);
+                } else {
+                    const span = document.createElement('span'); span.className = 'punctuation'; span.textContent = item.text; fragment.appendChild(span);
+                }
+            });
+            els.readerContainer.appendChild(fragment);
+        }
+
+        async function toggleWordSelection(wordData, spanElement) {
+            const cleanWord = wordData.cleanWord;
+
+            if (state.vocabulary.has(cleanWord)) {
+                spanElement.classList.remove('selected');
+                state.vocabulary.delete(cleanWord);
+                removeVocabularyItem(cleanWord);
+                saveStateToStorage();
+            } else {
+                spanElement.classList.add('selected');
+                addLoadingVocabularyItem(cleanWord, wordData.text);
+
+                try {
+                    const wordInfo = await fetchWordInfo(cleanWord);
+                    state.vocabulary.set(cleanWord, { original: wordData.text, cleanWord: cleanWord, info: wordInfo });
+                    updateVocabularyItem(cleanWord, wordInfo);
+                    saveStateToStorage(); // 翻译成功后保存
+                } catch (error) {
+                    const errorInfo = { translation: "翻译失败", details: [], phonetic: "" };
+                    state.vocabulary.set(cleanWord, { original: wordData.text, cleanWord: cleanWord, info: errorInfo });
+                    updateVocabularyItem(cleanWord, errorInfo, true);
+                }
+            }
+            updateVocabularyUIState();
+        }
+
+        // --- API：翻译与音标 ---
+        async function fetchWordInfo(word) {
+            let phonetic = ''; let translation = '[未找到释义]'; let details = [];
+            try {
+                const dictRes = await fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${encodeURIComponent(word)}`);
+                if (dictRes.ok) {
+                    const dictData = await dictRes.json();
+                    if (dictData[0]) {
+                        if (dictData[0].phonetic) phonetic = dictData[0].phonetic;
+                        else if (dictData[0].phonetics && dictData[0].phonetics.length > 0) {
+                            const p = dictData[0].phonetics.find(p => p.text);
+                            if (p) phonetic = p.text;
+                        }
+                    }
+                }
+            } catch (e) {}
+
+            try {
+                const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=en&tl=zh-CN&dt=t&dt=bd&q=${encodeURIComponent(word)}`;
+                const response = await fetch(url);
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data && data[0] && data[0][0] && data[0][0][0]) translation = data[0][0][0];
+                    if (data && data[1]) {
+                        data[1].forEach(pos => {
+                            const partOfSpeech = pos[0];
+                            const meanings = pos[1].slice(0, 3).join(', ');
+                            const posMap = { 'noun': 'n.', 'verb': 'v.', 'adjective': 'adj.', 'adverb': 'adv.', 'pronoun': 'pron.', 'preposition': 'prep.', 'conjunction': 'conj.' };
+                            details.push(`${posMap[partOfSpeech] || partOfSpeech + '.'} ${meanings}`);
+                        });
+                    }
+                }
+            } catch (error) {}
+            return { phonetic: phonetic ? (phonetic.startsWith('/') ? phonetic : `/${phonetic}/`) : '', translation: translation, details: details };
+        }
+
+        // --- TTS 语音引擎 ---
+        window.speakWord = function(word) {
+            if ('speechSynthesis' in window) {
+                // 防止重复播放中断
+                window.speechSynthesis.cancel(); 
+                const utterance = new SpeechSynthesisUtterance(word);
+                utterance.lang = 'en-US';
+                utterance.rate = 0.9; // 稍微慢一点，听得更清楚
+                window.speechSynthesis.speak(utterance);
+            } else {
+                showToast('您的浏览器不支持语音发音', true);
+            }
+        };
+
+        // --- UI：生词本更新 ---
+        function addLoadingVocabularyItem(cleanWord, originalWord) {
+            els.emptyState.classList.add('hidden');
+            const div = document.createElement('div');
+            div.id = `vocab-${cleanWord}`;
+            div.className = 'bg-slate-50 dark:bg-slate-700/50 border border-slate-100 dark:border-slate-700 p-3 rounded-xl flex items-start justify-between gap-3 animate-pulse-fast transition-colors';
+            div.innerHTML = `
+                <div class="flex-1 min-w-0">
+                    <p class="font-semibold text-slate-800 dark:text-white text-base mb-1 truncate">${originalWord}</p>
+                    <div class="flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400">
+                        <span class="loader"></span><span>正在翻译...</span>
+                    </div>
+                </div>
+            `;
+            els.vocabularyList.insertBefore(div, els.vocabularyList.firstChild);
+        }
+
+        function updateVocabularyItem(cleanWord, info, isError = false) {
+            const itemEl = document.getElementById(`vocab-${cleanWord}`);
+            if (!itemEl) return;
+            itemEl.classList.remove('animate-pulse-fast');
+            
+            const titleColor = isError ? 'text-red-500' : 'text-blue-600 dark:text-blue-400';
+            const originalWord = state.vocabulary.get(cleanWord).original;
+            
+            let detailsHtml = '';
+            if (info.details && info.details.length > 0) {
+                detailsHtml = `<div class="text-xs text-slate-500 dark:text-slate-400 mt-1.5 space-y-0.5 border-t border-slate-200 dark:border-slate-600 pt-1.5">
+                    ${info.details.map(d => `<p>${d}</p>`).join('')}
+                </div>`;
+            }
+
+            itemEl.innerHTML = `
+                <div class="flex-1 min-w-0">
+                    <div class="flex items-center gap-2 mb-0.5">
+                        <p class="font-bold text-slate-800 dark:text-white text-base truncate cursor-pointer hover:text-blue-500 transition" onclick="speakWord('${cleanWord}')" title="点击发音">
+                            ${originalWord}
+                        </p>
+                        <!-- 发音按钮 -->
+                        <button onclick="speakWord('${cleanWord}')" class="text-slate-400 hover:text-blue-500 dark:hover:text-blue-400 transition" title="发音">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                              <path fill-rule="evenodd" d="M9.383 3.076A1 1 0 0110 4v12a1 1 0 01-1.707.707L4.586 13H2a1 1 0 01-1-1V8a1 1 0 011-1h2.586l3.707-3.707a1 1 0 011.09-.217zM14.657 2.929a1 1 0 011.414 0A9.972 9.972 0 0119 10a9.972 9.972 0 01-2.929 7.071 1 1 0 01-1.414-1.414A7.971 7.971 0 0017 10c0-2.21-.894-4.208-2.343-5.657a1 1 0 010-1.414zm-2.829 2.828a1 1 0 011.415 0A5.983 5.983 0 0115 10a5.984 5.984 0 01-1.757 4.243 1 1 0 01-1.415-1.415A3.984 3.984 0 0013 10a3.983 3.983 0 00-1.172-2.828 1 1 0 010-1.415z" clip-rule="evenodd" />
+                            </svg>
+                        </button>
+                        ${info.phonetic ? `<p class="text-xs text-slate-400 dark:text-slate-500 font-mono">${info.phonetic}</p>` : ''}
+                    </div>
+                    <p class="text-sm font-medium ${titleColor} leading-snug">${info.translation}</p>
+                    ${detailsHtml}
+                </div>
+                <button class="text-slate-400 hover:text-red-500 transition p-1 mt-0.5" onclick="removeVocabByBtn('${cleanWord}')" title="移除生词">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    </svg>
+                </button>
+            `;
+        }
+
+        window.removeVocabByBtn = function(cleanWord) {
+            state.vocabulary.delete(cleanWord);
+            const itemEl = document.getElementById(`vocab-${cleanWord}`);
+            if (itemEl) {
+                itemEl.style.opacity = '0';
+                itemEl.style.transform = 'scale(0.95)';
+                setTimeout(() => {
+                    itemEl.remove();
+                    updateVocabularyUIState();
+                }, 200);
+            }
+            state.words.forEach(wordData => {
+                if (wordData.cleanWord === cleanWord) {
+                    const span = document.getElementById(wordData.id);
+                    if (span) span.classList.remove('selected');
+                }
+            });
+            saveStateToStorage();
+        };
+
+        function updateVocabularyUIState() {
+            const count = state.vocabulary.size;
+            els.wordCount.textContent = count;
+            const isEmpty = count === 0;
+            
+            els.emptyState.classList.toggle('hidden', !isEmpty);
+            els.copyAllBtn.disabled = isEmpty;
+            els.exportCsvBtn.disabled = isEmpty;
+            els.clearAllBtn.disabled = isEmpty;
+        }
+
+        // --- 工具：复制与导出 ---
+        function copyVocabulary() {
+            if (state.vocabulary.size === 0) return;
+            let textToCopy = "我的生词本\n" + "=".repeat(20) + "\n\n";
+            state.vocabulary.forEach((data) => {
+                const info = data.info;
+                let line = `${data.original}`;
+                if (info.phonetic) line += ` ${info.phonetic}`;
+                line += ` : ${info.translation}`;
+                if (info.details && info.details.length > 0) line += ` | ${info.details.join('; ')}`;
+                textToCopy += line + '\n';
+            });
+            const textarea = document.createElement('textarea');
+            textarea.value = textToCopy;
+            document.body.appendChild(textarea);
+            textarea.select();
+            try { document.execCommand('copy'); showToast('已成功复制文本！'); } 
+            catch (err) { showToast('复制失败', true); } 
+            finally { document.body.removeChild(textarea); }
+        }
+
+        function exportCSV() {
+            if (state.vocabulary.size === 0) return;
+            
+            // 使用 BOM 头确保 Excel 以 UTF-8 打开不会乱码
+            let csvContent = "\uFEFF"; 
+            csvContent += "单词,音标,主要翻译,详细释义\n";
+            
+            state.vocabulary.forEach((data) => {
+                const info = data.info;
+                // CSV 转义规则：字段含逗号或换行需用双引号包裹，双引号本身用两个双引号替换
+                const escapeCSV = (str) => `"${(str || '').replace(/"/g, '""')}"`;
+                
+                const word = escapeCSV(data.original);
+                const phonetic = escapeCSV(info.phonetic);
+                const translation = escapeCSV(info.translation);
+                const details = escapeCSV(info.details ? info.details.join('; ') : '');
+                
+                csvContent += `${word},${phonetic},${translation},${details}\n`;
+            });
+
+            // 触发下载
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement("a");
+            link.setAttribute("href", url);
+            link.setAttribute("download", "vocabulary_export.csv");
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+            
+            showToast('CSV 已成功下载！');
+        }
+
+        function clearVocabulary() {
+            if (!confirm('确定要清空所有记录吗？')) return;
+            document.querySelectorAll('.word.selected').forEach(el => el.classList.remove('selected'));
+            state.vocabulary.clear();
+            Array.from(els.vocabularyList.children).forEach(child => {
+                if (child.id !== 'emptyState') child.remove();
+            });
+            updateVocabularyUIState();
+            saveStateToStorage();
+        }
+
+        function showToast(message, isError = false) {
+            els.copyToast.textContent = message;
+            els.copyToast.className = `text-sm transition-opacity duration-300 ${isError ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400'}`;
+            els.copyToast.style.opacity = '1';
+            setTimeout(() => els.copyToast.style.opacity = '0', 3000);
+        }
+
+        // --- 启动应用 ---
+        initApp();
+    </script>
+</body>
+</html>
